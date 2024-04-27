@@ -6,7 +6,9 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -64,13 +66,10 @@ public class IRCTCBooking {
 	}
 
 	public static void main(String[] args) throws Exception {
+		preBookingChecks();
 		LocalTime start = LocalTime.now();
-
-		// start booking script
-		IRCTCBooking.startBooking();
-
+		startBooking();
 		LocalTime end = LocalTime.now();
-
 		System.out.println("Script duration for successful booking: " + Duration.between(start, end).toMillis());
 	}
 
@@ -84,8 +83,6 @@ public class IRCTCBooking {
 		driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(defaultImplicitWaitTime));
 
 		boolean closeBrowser = true;
-
-		IRCTCBooking.preBookingChecks();
 
 		try {
 			driver.get(irctcUrl);
@@ -134,6 +131,21 @@ public class IRCTCBooking {
 							bookingProperties.getProperty(BookingProperty.QUOTA.toString()).trim().toUpperCase())));
 			actions.click(journeyQuotaOption).perform();
 
+			// click train search button
+			trainSearchButton.click();
+
+			WebElement train = driver.findElement(By.xpath(String.format(
+					"//strong[contains(text(), '(%s)')]/ancestor::div[contains(@class, 'border-all')]",
+					bookingProperties.getProperty(BookingProperty.TRAIN_NUMBER.toString()).trim())));
+
+			// waiting for ad to load to prevent unnecessary error
+			if (!tatkalWindow) {
+				TimeUnit.SECONDS.sleep(2);
+			}
+
+			// scroll to the train (if needed)
+			actions.moveToElement(train).perform();
+
 			/*
 			 * Sleeping the thread until the tatkal booking start time is reached for the
 			 * specified train class
@@ -141,7 +153,7 @@ public class IRCTCBooking {
 			if (tatkalWindow) {
 				String journeyQuota = bookingProperties.getProperty(BookingProperty.QUOTA.toString()).trim();
 
-				if ("TATKAL".equalsIgnoreCase(journeyQuota) || "PREMIUM TATKAL".equalsIgnoreCase(journeyQuota)) {
+				if ("TATKAL".equalsIgnoreCase(journeyQuota)) {
 					String trainClass = bookingProperties.getProperty(BookingProperty.TRAIN_CLASS.toString()).trim();
 
 					// tatkal booking start time with default value as 10:00 AM for AC classes
@@ -162,21 +174,6 @@ public class IRCTCBooking {
 				}
 			}
 
-			// click train search button
-			trainSearchButton.click();
-
-			WebElement train = driver.findElement(By.xpath(String.format(
-					"//strong[contains(text(), '(%s)')]/ancestor::div[contains(@class, 'border-all')]",
-					bookingProperties.getProperty(BookingProperty.TRAIN_NUMBER.toString()).trim())));
-
-			// waiting for ad to load to prevent unnecessary error
-			if (!tatkalWindow) {
-				TimeUnit.SECONDS.sleep(2);
-			}
-
-			// scroll to the train (if needed)
-			actions.moveToElement(train).perform();
-
 			// click train class
 			WebElement trainClassLink = train.findElement(
 					By.xpath(String.format(".//td//*[contains(text(), '(%s)')]/ancestor::td",
@@ -192,7 +189,7 @@ public class IRCTCBooking {
 			actions.moveToElement(train).perform();
 
 			if (seatAvailableLink.findElements(By.cssSelector("div[class*='AVAILABLE']")).size() == 0) {
-				String message = "Seat not available for the given class for the provided date.";
+				String message = "Seat not available for the given class in the provided date.";
 				jsExecutor.executeScript(String.format("window.alert('%s')", message));
 				TimeUnit.SECONDS.sleep(alternateImplicitWaitTime);
 				throw new RuntimeException(message);
@@ -395,6 +392,173 @@ public class IRCTCBooking {
 	}
 
 	private static void preBookingChecks() {
+		String irctcUsername = bookingProperties.getProperty(BookingProperty.USERNAME.toString());
+		String irctcPassword = bookingProperties.getProperty(BookingProperty.PASSWORD.toString());
+		String fromStationCode = bookingProperties.getProperty(BookingProperty.FROM_STATION.toString());
+		String toStationCode = bookingProperties.getProperty(BookingProperty.TO_STATION.toString());
+		String journeyDate = bookingProperties.getProperty(BookingProperty.JOURNEY_DATE.toString());
+		String journeyQuota = bookingProperties.getProperty(BookingProperty.QUOTA.toString());
+		String trainNumber = bookingProperties.getProperty(BookingProperty.TRAIN_NUMBER.toString());
+		String trainClass = bookingProperties.getProperty(BookingProperty.TRAIN_CLASS.toString());
+		String passengerCount = bookingProperties.getProperty(BookingProperty.PASSENGER_COUNT.toString());
+		String upiId = bookingProperties.getProperty(BookingProperty.UPI_ID.toString());
+
+		LocalDate journeyLocalDate = null;
+		int passengerCountInt = 0;
+		final String valueNotProvidedMessage = "Value not provided for property: ";
+		final String invalidValueMessage = "Invalid value for property: ";
+
+		if (irctcUsername == null || irctcUsername.trim().isEmpty()) {
+			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.USERNAME.toString());
+		}
+
+		if (irctcPassword == null || irctcPassword.trim().isEmpty()) {
+			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.PASSWORD.toString());
+		}
+
+		if (fromStationCode == null || fromStationCode.trim().isEmpty()) {
+			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.FROM_STATION.toString());
+		}
+
+		if (toStationCode == null || toStationCode.trim().isEmpty()) {
+			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.TO_STATION.toString());
+		}
+
+		if (journeyDate == null || journeyDate.trim().isEmpty()) {
+			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.JOURNEY_DATE.toString());
+		} else {
+			try {
+				journeyLocalDate = LocalDate.parse(journeyDate.trim(), journeyDateFormattter);
+			} catch (DateTimeParseException e) {
+				throw new RuntimeException("Invalid journey date format.");
+			}
+
+			LocalDate indiaLocalDate = LocalDate.now(indiaZoneId);
+
+			if (journeyLocalDate.isBefore(indiaLocalDate)) {
+				throw new RuntimeException("Invalid journey date, it should not be in the past date.");
+			}
+		}
+
+		if (journeyQuota == null || journeyQuota.trim().isEmpty()) {
+			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.QUOTA.toString());
+		} else {
+			LocalDate indiaNextDayLocalDate = LocalDate.now(indiaZoneId).plus(1, ChronoUnit.DAYS);
+
+			if (("TATKAL".equalsIgnoreCase(journeyQuota.trim())
+					|| "PREMIUM TATKAL".equalsIgnoreCase(journeyQuota.trim()))
+					&& journeyLocalDate.isAfter(indiaNextDayLocalDate)) {
+				throw new RuntimeException("Journey date beyond 'TATKAL' reservation period.");
+			}
+		}
+
+		if (trainNumber == null || trainNumber.trim().isEmpty()) {
+			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.TRAIN_NUMBER.toString());
+		} else {
+			try {
+				Integer.parseInt(trainNumber.trim());
+			} catch (NumberFormatException e) {
+				throw new RuntimeException(invalidValueMessage + BookingProperty.TRAIN_NUMBER.toString());
+			}
+		}
+
+		if (trainClass == null || trainClass.trim().isEmpty()) {
+			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.TRAIN_CLASS.toString());
+		} else {
+			List<String> validTrainClasses = Arrays.asList("2S", "SL", "CC", "3E", "3A", "2A", "1A");
+
+			if (validTrainClasses.indexOf(trainClass.trim()) < 0) {
+				throw new RuntimeException(invalidValueMessage + BookingProperty.TRAIN_CLASS.toString());
+			}
+
+			if ("TATKAL".equalsIgnoreCase(journeyQuota.trim()) && "1A".equalsIgnoreCase(trainClass.trim())) {
+				throw new RuntimeException("'1A' train class not applicable for 'TATKAL' journey quota.");
+			}
+		}
+
+		if (passengerCount == null || passengerCount.trim().isEmpty()) {
+			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.PASSENGER_COUNT.toString());
+		} else {
+			try {
+				passengerCountInt = Integer.parseInt(passengerCount.trim());
+			} catch (NumberFormatException e) {
+				throw new RuntimeException(invalidValueMessage + BookingProperty.PASSENGER_COUNT.toString());
+			}
+
+			if (passengerCountInt < 1) {
+				throw new RuntimeException(invalidValueMessage + BookingProperty.PASSENGER_COUNT.toString());
+			}
+
+			if (("TATKAL".equalsIgnoreCase(journeyQuota.trim())
+					|| "PREMIUM TATKAL".equalsIgnoreCase(journeyQuota.trim()))
+					&& passengerCountInt > 4) {
+				throw new RuntimeException("Maximum 4 passengers are allowed in 'TATKAL' journey quota.");
+			} else if (passengerCountInt > 6) {
+				throw new RuntimeException("Maximum 6 passengers are allowed in non 'TATKAL' journey quota.");
+			}
+		}
+
+		for (int i = 1; i <= passengerCountInt; i++) {
+			String passengerKey = "passenger" + i;
+			String passengerDetails = bookingProperties.getProperty(passengerKey);
+
+			if (passengerDetails == null || passengerDetails.trim().isEmpty()) {
+				throw new RuntimeException("Passenger details not provided for: " + passengerKey);
+			}
+
+			String[] detailsArray = passengerDetails.trim().split("\\s*\\|\\s*");
+
+			if (detailsArray.length < 3) {
+				throw new RuntimeException(
+						"Mandatory fields (<full name> | <age> | <gender>) not provided for: " + passengerKey);
+			}
+
+			if (detailsArray[0].isEmpty()) {
+				throw new RuntimeException("Passenger name not provided for: " + passengerKey);
+			}
+
+			if (detailsArray[1].isEmpty()) {
+				throw new RuntimeException("Passenger age not provided for: " + passengerKey);
+			} else {
+				String invalidAgeMessage = "Invalid age, it should be between 1 and 125 for: " + passengerKey;
+
+				try {
+					int age = Integer.parseInt(detailsArray[1]);
+
+					if (age < 1 || age > 125) {
+						throw new RuntimeException(invalidAgeMessage);
+					}
+				} catch (NumberFormatException e) {
+					throw new RuntimeException(invalidAgeMessage);
+				}
+			}
+
+			if (detailsArray[2].isEmpty()) {
+				throw new RuntimeException("Passenger gender not provided for: " + passengerKey);
+			} else {
+				List<String> validGenders = Arrays.asList("M", "F", "T");
+
+				if (validGenders.indexOf(detailsArray[2].toUpperCase()) < 0) {
+					throw new RuntimeException("Invalid gender for: " + passengerKey);
+
+				}
+			}
+
+			if (detailsArray.length >= 4 && !detailsArray[3].isEmpty()) {
+				List<String> validBerthPreferences = Arrays.asList("LB", "MB", "UB", "SL", "SU");
+
+				if (validBerthPreferences.indexOf(detailsArray[3].toUpperCase()) < 0) {
+					throw new RuntimeException("Invalid berth preference for: " + passengerKey);
+				}
+			}
+		}
+
+		if (upiId == null || upiId.trim().isEmpty()) {
+			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.UPI_ID.toString());
+		}
+
+		IRCTCBooking.seatLinkDateSearch = journeyLocalDate.format(seatLinkDateTimeFormatter);
+
 		LocalTime irctcTatkalWindowStart = LocalTime.of(9, 30).truncatedTo(ChronoUnit.MINUTES);
 		LocalTime irctcTatkalWindowEnd = LocalTime.of(11, 31).truncatedTo(ChronoUnit.MINUTES);
 		LocalTime indiaLocalTime = LocalTime.now(indiaZoneId);
@@ -402,11 +566,6 @@ public class IRCTCBooking {
 		if (indiaLocalTime.isAfter(irctcTatkalWindowStart) && indiaLocalTime.isBefore(irctcTatkalWindowEnd)) {
 			IRCTCBooking.tatkalWindow = true;
 		}
-
-		IRCTCBooking.seatLinkDateSearch = LocalDate
-				.parse(bookingProperties.getProperty(BookingProperty.JOURNEY_DATE.toString()).trim(),
-						journeyDateFormattter)
-				.format(seatLinkDateTimeFormatter);
 	}
 
 }
