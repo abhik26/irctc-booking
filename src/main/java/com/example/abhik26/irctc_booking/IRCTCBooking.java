@@ -467,7 +467,7 @@ public class IRCTCBooking {
 		} else {
 			List<String> validTrainClasses = Arrays.asList("2S", "SL", "CC", "3E", "3A", "2A", "1A");
 
-			if (validTrainClasses.indexOf(trainClass.trim()) < 0) {
+			if (validTrainClasses.indexOf(trainClass.trim().toUpperCase()) < 0) {
 				throw new RuntimeException(invalidValueMessage + BookingProperty.TRAIN_CLASS.toString());
 			}
 
