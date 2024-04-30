@@ -6,7 +6,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.List;
@@ -27,8 +27,10 @@ public class IRCTCBooking {
 	private static final String irctcUrl = "https://www.irctc.co.in/nget/train-search";
 
 	private static final ZoneId indiaZoneId = ZoneId.of("Asia/Kolkata");
-	private static final DateTimeFormatter journeyDateFormattter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-	private static final DateTimeFormatter seatLinkDateTimeFormatter = DateTimeFormatter.ofPattern("EEE, dd MMM");
+	private static final DateTimeFormatter journeyDateFormattter = DateTimeFormatter.ofPattern("dd/MM/uuuu")
+			.withResolverStyle(ResolverStyle.STRICT);
+	private static final DateTimeFormatter seatLinkDateTimeFormatter = DateTimeFormatter.ofPattern("EEE, dd MMM")
+			.withResolverStyle(ResolverStyle.STRICT);
 
 	// Values are in seconds
 	private static final int defaultImplicitWaitTime = 60;
@@ -427,12 +429,7 @@ public class IRCTCBooking {
 		if (journeyDate == null || journeyDate.trim().isEmpty()) {
 			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.JOURNEY_DATE.toString());
 		} else {
-			try {
-				journeyLocalDate = LocalDate.parse(journeyDate.trim(), journeyDateFormattter);
-			} catch (DateTimeParseException e) {
-				throw new RuntimeException("Invalid journey date format.");
-			}
-
+			journeyLocalDate = LocalDate.parse(journeyDate.trim(), journeyDateFormattter);
 			LocalDate indiaLocalDate = LocalDate.now(indiaZoneId);
 
 			if (journeyLocalDate.isBefore(indiaLocalDate)) {
