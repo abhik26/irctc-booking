@@ -23,7 +23,6 @@ The project is made to book ticket from the [IRCTC](https://www.irctc.co.in) web
         Notice that berth preference is given for passenger 1 but not for passenger 2 in the above example.
         **_Note: All the passengers should be Indian citizen._**
     - The upi id property should have a valid UPI virtual payment address (VPA).
-- ![Sample image of booking.properties file](booking_properties_image.png)
 
 #### Running the script
 - Run the [IRCTCBooking.java](src/main/java/com/example/abhik26/irctc_booking/IRCTCBooking.java) file from any IDE like Eclipse, VS Code, IntelliJ etc to start the booking.
