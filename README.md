@@ -12,10 +12,10 @@ The project is made to book ticket from the [IRCTC](https://www.irctc.co.in) web
     - Supported journey quota property values are: **TATKAL, GENERAL**.
     - Valid train class property values are: second sitting chair - non AC (**2S**), sleeper - non AC (**SL**), chair car - AC (**CC**), three tier AC economy (**3E**), three tier AC (**3A**), two tier AC (**2A**), two tier first AC (**1A**). **_1A_** train class is not supported for **_tatkal_** ticket.
     - Number of passengers (**passenger_count**) property should have value greater than zero (**0**), it should be less than or equal to **4** for **tatkal** quota and it should be less than or equal to **6** for **general** quota ticket.
-    - Passenger details should be equal to the value of number of passengers property. Passenger details should be in th format: **<full name> | <age> | <gender> | <berth preference>**. 
-        - Passenger full name should not contain any abbreviations, it should be as per any government id. 
-        - Passenger age should be between **1** and **125**. 
-        - Valid passenger gender are: male (**M**), female (**F**) and transgender (**T**). 
+    - Passenger details should be equal to the value of number of passengers property. Passenger details should be in th format: **&lt;full name&gt; | &lt;age&gt; | &lt;gender&gt; | &lt;berth preference&gt;**.
+        - Passenger full name should not contain any abbreviations, it should be as per any government id.
+        - Passenger age should be between **1** and **125**.
+        - Valid passenger gender are: male (**M**), female (**F**) and transgender (**T**).
         - Valid berth preference are: lower berth (**LB**), middle berth (**MB**), upper berth (**UB**), side lower (**SL**), side upper (**SU**). Berth preference is optional.
         - E.g. If number of passengers are **2** then passenger details should be like:
         **passenger1=Abhishek Anand | 25 | M | SL**
