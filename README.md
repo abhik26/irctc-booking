@@ -17,10 +17,10 @@ The project is made to book ticket from the [IRCTC](https://www.irctc.co.in) web
         - Passenger age should be between **1** and **125**.
         - Valid passenger gender are: male (**M**), female (**F**) and transgender (**T**).
         - Valid berth preference are: lower berth (**LB**), middle berth (**MB**), upper berth (**UB**), side lower (**SL**), side upper (**SU**). Berth preference is optional.
-        - E.g. If number of passengers are **2** then passenger details should be like:
-        **passenger1=Abhishek Anand | 25 | M | SL**
-        **passenger2=Isha Anand | 20 | F**
-        Notice that berth preference is given for passenger 1 but not for passenger 2 in the above example.
+        - E.g. If number of passengers are **2** then passenger details should be like:\
+        **passenger1=Abhishek Anand | 25 | M | SL**\
+        **passenger2=Isha Anand | 20 | F**\
+        Notice that berth preference is given for passenger 1 but not for passenger 2 in the above example.\
         **_Note: All the passengers should be Indian citizen._**
     - The upi id property should have a valid UPI virtual payment address (VPA).
 
