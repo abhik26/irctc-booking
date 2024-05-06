@@ -42,9 +42,10 @@ public class IRCTCBooking {
 	private static String seatLinkDateSearch = null;
 
 	private static enum BookingProperty {
-		USERNAME("irctcUsername"), PASSWORD("irctcPassword"), FROM_STATION("fromStationCode"),
-		TO_STATION("toStationCode"), JOURNEY_DATE("journeyDate"), QUOTA("quota"), TRAIN_NUMBER("trainNumber"),
-		TRAIN_CLASS("trainClass"), PASSENGER_COUNT("passengerCount"), UPI_ID("upiId");
+		USERNAME("irctc_username"), PASSWORD("irctc_password"), FROM_STATION("from_station_code"),
+		TO_STATION("to_station_code"), JOURNEY_DATE("journey_date"), JOURNEY_QUOTA("journey_quota"),
+		TRAIN_NUMBER("train_number"), TRAIN_CLASS("train_class"), PASSENGER_COUNT("passenger_count"),
+		UPI_ID("upi_id");
 
 		private final String name;
 
@@ -130,7 +131,8 @@ public class IRCTCBooking {
 			WebElement journeyQuotaOption = driver
 					.findElement(By.cssSelector("div[class='ui-dropdown-items-wrapper ng-tns-c65-12']"))
 					.findElement(By.cssSelector(String.format("li[aria-label='%s']",
-							bookingProperties.getProperty(BookingProperty.QUOTA.toString()).trim().toUpperCase())));
+							bookingProperties.getProperty(BookingProperty.JOURNEY_QUOTA.toString()).trim()
+									.toUpperCase())));
 			actions.click(journeyQuotaOption).perform();
 
 			// click train search button
@@ -153,7 +155,7 @@ public class IRCTCBooking {
 			 * specified train class
 			 */
 			if (tatkalWindow) {
-				String journeyQuota = bookingProperties.getProperty(BookingProperty.QUOTA.toString()).trim();
+				String journeyQuota = bookingProperties.getProperty(BookingProperty.JOURNEY_QUOTA.toString()).trim();
 
 				if ("TATKAL".equalsIgnoreCase(journeyQuota)) {
 					String trainClass = bookingProperties.getProperty(BookingProperty.TRAIN_CLASS.toString()).trim();
@@ -399,7 +401,7 @@ public class IRCTCBooking {
 		String fromStationCode = bookingProperties.getProperty(BookingProperty.FROM_STATION.toString());
 		String toStationCode = bookingProperties.getProperty(BookingProperty.TO_STATION.toString());
 		String journeyDate = bookingProperties.getProperty(BookingProperty.JOURNEY_DATE.toString());
-		String journeyQuota = bookingProperties.getProperty(BookingProperty.QUOTA.toString());
+		String journeyQuota = bookingProperties.getProperty(BookingProperty.JOURNEY_QUOTA.toString());
 		String trainNumber = bookingProperties.getProperty(BookingProperty.TRAIN_NUMBER.toString());
 		String trainClass = bookingProperties.getProperty(BookingProperty.TRAIN_CLASS.toString());
 		String passengerCount = bookingProperties.getProperty(BookingProperty.PASSENGER_COUNT.toString());
@@ -438,13 +440,17 @@ public class IRCTCBooking {
 		}
 
 		if (journeyQuota == null || journeyQuota.trim().isEmpty()) {
-			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.QUOTA.toString());
+			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.JOURNEY_QUOTA.toString());
 		} else {
+			List<String> validJourneyQuotas = Arrays.asList("TATKAL", "GENERAL");
+
+			if (validJourneyQuotas.indexOf(journeyQuota.trim().toUpperCase()) < 0) {
+				throw new RuntimeException(invalidValueMessage + BookingProperty.JOURNEY_QUOTA.toString());
+			}
+
 			LocalDate indiaNextDayLocalDate = LocalDate.now(indiaZoneId).plus(1, ChronoUnit.DAYS);
 
-			if (("TATKAL".equalsIgnoreCase(journeyQuota.trim())
-					|| "PREMIUM TATKAL".equalsIgnoreCase(journeyQuota.trim()))
-					&& journeyLocalDate.isAfter(indiaNextDayLocalDate)) {
+			if ("TATKAL".equalsIgnoreCase(journeyQuota.trim()) && journeyLocalDate.isAfter(indiaNextDayLocalDate)) {
 				throw new RuntimeException("Journey date beyond 'TATKAL' reservation period.");
 			}
 		}
@@ -486,12 +492,10 @@ public class IRCTCBooking {
 				throw new RuntimeException(invalidValueMessage + BookingProperty.PASSENGER_COUNT.toString());
 			}
 
-			if (("TATKAL".equalsIgnoreCase(journeyQuota.trim())
-					|| "PREMIUM TATKAL".equalsIgnoreCase(journeyQuota.trim()))
-					&& passengerCountInt > 4) {
+			if ("TATKAL".equalsIgnoreCase(journeyQuota.trim()) && passengerCountInt > 4) {
 				throw new RuntimeException("Maximum 4 passengers are allowed in 'TATKAL' journey quota.");
 			} else if (passengerCountInt > 6) {
-				throw new RuntimeException("Maximum 6 passengers are allowed in non 'TATKAL' journey quota.");
+				throw new RuntimeException("Maximum 6 passengers are allowed in 'GENERAL' journey quota.");
 			}
 		}
 
