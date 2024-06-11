@@ -69,11 +69,8 @@ public class IRCTCBooking {
 	}
 
 	public static void main(String[] args) throws Exception {
-		preBookingChecks();
-		LocalTime start = LocalTime.now();
+		doPreBookingValidations();
 		startBooking();
-		LocalTime end = LocalTime.now();
-		System.out.println("Script duration for successful booking: " + Duration.between(start, end).toMillis());
 	}
 
 	@SuppressWarnings("unused")
@@ -98,6 +95,29 @@ public class IRCTCBooking {
 			 * To be used during tatkal window i.e. between 09:30 AM to 11:30 AM.
 			 */
 			if (tatkalWindow) {
+				/*
+				 * Preventing login before threshold time for tatkal booking, i.e. 09:59 AM for AC
+				 * and 10:59 AM for non AC classes.
+				 */
+				String journeyQuota = bookingProperties.getProperty(BookingProperty.JOURNEY_QUOTA.toString()).trim();
+
+				if ("TATKAL".equalsIgnoreCase(journeyQuota)) {
+					String trainClass = bookingProperties.getProperty(BookingProperty.TRAIN_CLASS.toString()).trim();
+
+					LocalTime loginTimeThreshold = LocalTime.of(9, 59).truncatedTo(ChronoUnit.MINUTES);
+
+					// Changing hour value to 10 for non AC classes
+					if ("SL".equalsIgnoreCase(trainClass) || "2S".equalsIgnoreCase(trainClass)) {
+						loginTimeThreshold = loginTimeThreshold.withHour(10);
+					}
+
+					LocalTime indiaLocalTime = LocalTime.now(indiaZoneId);
+
+					if (indiaLocalTime.isBefore(loginTimeThreshold)) {
+						throw new RuntimeException("Trying to login before: " + loginTimeThreshold);
+					}
+				}
+
 				// click train search button
 				trainSearchButton.click();
 				signIn(driver, wait);
@@ -414,7 +434,7 @@ public class IRCTCBooking {
 		}
 	}
 
-	private static void preBookingChecks() {
+	private static void doPreBookingValidations() {
 		String irctcUsername = bookingProperties.getProperty(BookingProperty.USERNAME.toString());
 		String irctcPassword = bookingProperties.getProperty(BookingProperty.PASSWORD.toString());
 		String fromStationCode = bookingProperties.getProperty(BookingProperty.FROM_STATION.toString());
