@@ -173,6 +173,11 @@ public class IRCTCBooking {
 							.between(indiaLocalTime, tatkalBookingStartTime).toMillis();
 
 					if (timeDifferenceInMillis > 0) {
+						// Time remaining for the booking to start should be less than 1 minute (60000 milliseconds).
+						if (timeDifferenceInMillis > 60000) {
+							throw new RuntimeException("More than one minute is remaining for the booking to start.");
+						}
+
 						TimeUnit.MILLISECONDS.sleep(timeDifferenceInMillis);
 					}
 				}
@@ -308,6 +313,20 @@ public class IRCTCBooking {
 				WebElement continueButton = driver.findElement(
 						By.xpath("//button[@class='train_Search btnDefault'][contains(text(), 'Continue')]"));
 				actions.click(continueButton).perform();
+
+				/*
+				 * selecting 'No' for 'Passengers may get berth allotted in different coaches' dialog box.
+				 */
+				try {
+					driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(alternateImplicitWaitTime));
+					WebElement confirmButton = driver.findElement(
+							By.xpath("//span[@class='ui-button-text ui-clickable'][contains(text(), 'No')]"));
+					confirmButton.click();
+				} catch (Exception e) {
+					// e.printStackTrace();
+				} finally {
+					driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(defaultImplicitWaitTime));
+				}
 
 				// increasing wait time to review the journey
 				driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(defaultImplicitWaitTime * 2));
@@ -450,8 +469,9 @@ public class IRCTCBooking {
 
 			LocalDate indiaNextDayLocalDate = LocalDate.now(indiaZoneId).plus(1, ChronoUnit.DAYS);
 
-			if ("TATKAL".equalsIgnoreCase(journeyQuota.trim()) && journeyLocalDate.isAfter(indiaNextDayLocalDate)) {
-				throw new RuntimeException("Journey date beyond 'TATKAL' reservation period.");
+			if ("TATKAL".equalsIgnoreCase(journeyQuota.trim()) && (journeyLocalDate.isBefore(indiaNextDayLocalDate)
+					|| journeyLocalDate.isAfter(indiaNextDayLocalDate))) {
+				throw new RuntimeException(invalidValueMessage + BookingProperty.JOURNEY_DATE.toString());
 			}
 		}
 
@@ -556,6 +576,12 @@ public class IRCTCBooking {
 
 		if (upiId == null || upiId.trim().isEmpty()) {
 			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.UPI_ID.toString());
+		} else {
+			String upiIdRegex = "^(\\w+[.\\-])*\\w+@(\\w+[.\\-])*\\w+$";
+
+			if (!upiId.trim().matches(upiIdRegex)) {
+				throw new RuntimeException(invalidValueMessage + BookingProperty.UPI_ID.toString());
+			}
 		}
 
 		IRCTCBooking.seatLinkDateSearch = journeyLocalDate.format(seatLinkDateTimeFormatter);
