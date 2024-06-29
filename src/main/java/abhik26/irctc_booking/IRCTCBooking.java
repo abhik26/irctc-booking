@@ -1,4 +1,4 @@
-package com.example.abhik26.irctc_booking;
+package abhik26.irctc_booking;
 
 import java.io.InputStream;
 import java.time.Duration;

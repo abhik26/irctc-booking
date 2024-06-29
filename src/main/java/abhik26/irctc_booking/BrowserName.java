@@ -1,4 +1,4 @@
-package com.example.abhik26.irctc_booking;
+package abhik26.irctc_booking;
 
 public enum BrowserName {
 
