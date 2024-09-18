@@ -1,5 +1,6 @@
 package abhik26.irctc_booking;
 
+import java.io.File;
 import java.io.InputStream;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -16,11 +17,15 @@ import java.util.concurrent.TimeUnit;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.OutputType;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
+
+import net.sourceforge.tess4j.ITesseract;
+import net.sourceforge.tess4j.Tesseract;
 
 public class IRCTCBooking {
 
@@ -40,12 +45,13 @@ public class IRCTCBooking {
 	private static Properties bookingProperties = null;
 	private static boolean tatkalWindow = false;
 	private static String seatLinkDateSearch = null;
+	private static boolean captchaTextExtractionEnabled;
 
 	private static enum BookingProperty {
 		USERNAME("irctc_username"), PASSWORD("irctc_password"), FROM_STATION("from_station_code"),
 		TO_STATION("to_station_code"), JOURNEY_DATE("journey_date"), JOURNEY_QUOTA("journey_quota"),
 		TRAIN_NUMBER("train_number"), TRAIN_CLASS("train_class"), PASSENGER_COUNT("passenger_count"),
-		UPI_ID("upi_id");
+		UPI_ID("upi_id"), CAPTCHA_TEXT_EXTRACTION_ENABLED("captcha_text_extraction_enabled");
 
 		private final String name;
 
@@ -59,18 +65,169 @@ public class IRCTCBooking {
 		}
 	}
 
-	static {
+	public static void main(String[] args) throws Exception {
+		loadBookingProperties();
+		validateBookingProperties();
+		startBooking();
+	}
+
+	private static void loadBookingProperties() throws Exception {
 		try (InputStream is = ClassLoader.getSystemClassLoader().getResourceAsStream("booking.properties")) {
 			bookingProperties = new Properties();
 			bookingProperties.load(is);
 		} catch (Exception e) {
-			e.printStackTrace();
+			throw e;
 		}
 	}
 
-	public static void main(String[] args) throws Exception {
-		doPreBookingValidations();
-		startBooking();
+	private static void validateBookingProperties() {
+		final String valueNotProvidedMessage = "Value not provided for property: ";
+		final String invalidValueMessage = "Invalid value for property: ";
+		final LocalDate indiaLocalDate = LocalDate.now(indiaZoneId);
+
+		LocalDate journeyLocalDate = null;
+		String journeyQuota = null;
+		int passengerCountInt = 0;
+
+		for (BookingProperty bookingProperty : BookingProperty.values()) {
+			String propertyValue = bookingProperties.getProperty(bookingProperty.toString());
+
+			if (propertyValue == null || propertyValue.trim().isEmpty()) {
+				throw new RuntimeException(valueNotProvidedMessage + bookingProperty);
+			}
+
+			if (BookingProperty.JOURNEY_DATE.equals(bookingProperty)) {
+				try {
+					journeyLocalDate = LocalDate.parse(propertyValue.trim(), journeyDateFormattter);
+				} catch (Exception e) {
+					throw new RuntimeException(
+							invalidValueMessage + bookingProperty + ". It should be in the proper format.");
+				}
+
+				if (journeyLocalDate.isBefore(indiaLocalDate)) {
+					throw new RuntimeException(invalidValueMessage + bookingProperty
+							+ ". It should not be in the past date.");
+				}
+			} else if (BookingProperty.JOURNEY_QUOTA.equals(bookingProperty)) {
+				List<String> validJourneyQuotas = Arrays.asList("TATKAL", "GENERAL");
+
+				if (validJourneyQuotas.indexOf(propertyValue.trim().toUpperCase()) < 0) {
+					throw new RuntimeException(invalidValueMessage + bookingProperty);
+				}
+
+				LocalDate indiaNextDayLocalDate = indiaLocalDate.plus(1, ChronoUnit.DAYS);
+
+				if ("TATKAL".equalsIgnoreCase(propertyValue.trim()) && (journeyLocalDate.isBefore(indiaNextDayLocalDate)
+						|| journeyLocalDate.isAfter(indiaNextDayLocalDate))) {
+					throw new RuntimeException(invalidValueMessage + bookingProperty);
+				}
+
+				journeyQuota = propertyValue.trim();
+			} else if (BookingProperty.TRAIN_NUMBER.equals(bookingProperty)) {
+				try {
+					Integer.parseInt(propertyValue.trim());
+				} catch (NumberFormatException e) {
+					throw new RuntimeException(invalidValueMessage + bookingProperty);
+				}
+			} else if (BookingProperty.TRAIN_CLASS.equals(bookingProperty)) {
+				List<String> validTrainClasses = Arrays.asList("2S", "SL", "CC", "3E", "3A", "2A", "1A");
+
+				if (validTrainClasses.indexOf(propertyValue.trim().toUpperCase()) < 0) {
+					throw new RuntimeException(invalidValueMessage + bookingProperty);
+				}
+
+				if ("TATKAL".equalsIgnoreCase(journeyQuota) && "1A".equalsIgnoreCase(propertyValue.trim())) {
+					throw new RuntimeException("'1A' train class not applicable for 'TATKAL' journey quota.");
+				}
+			} else if (BookingProperty.PASSENGER_COUNT.equals(bookingProperty)) {
+				try {
+					passengerCountInt = Integer.parseInt(propertyValue.trim());
+				} catch (NumberFormatException e) {
+					throw new RuntimeException(invalidValueMessage + bookingProperty);
+				}
+
+				if (passengerCountInt < 1) {
+					throw new RuntimeException(invalidValueMessage + bookingProperty);
+				}
+
+				if ("TATKAL".equalsIgnoreCase(journeyQuota) && passengerCountInt > 4) {
+					throw new RuntimeException("Maximum 4 passengers are allowed in 'TATKAL' journey quota.");
+				} else if (passengerCountInt > 6) {
+					throw new RuntimeException("Maximum 6 passengers are allowed in 'GENERAL' journey quota.");
+				}
+			} else if (BookingProperty.UPI_ID.equals(bookingProperty)) {
+				String upiIdRegex = "^(\\w+[.\\-])*\\w+@(\\w+[.\\-])*\\w+$";
+
+				if (!propertyValue.trim().matches(upiIdRegex)) {
+					throw new RuntimeException(invalidValueMessage + bookingProperty);
+				}
+			} else if (BookingProperty.CAPTCHA_TEXT_EXTRACTION_ENABLED.equals(bookingProperty)) {
+				if (!propertyValue.trim().equalsIgnoreCase("true")
+						&& !propertyValue.trim().equalsIgnoreCase("false")) {
+					throw new RuntimeException(
+							invalidValueMessage + bookingProperty);
+				}
+
+				captchaTextExtractionEnabled = Boolean.parseBoolean(propertyValue.trim());
+			}
+		}
+
+		for (int i = 1; i <= passengerCountInt; i++) {
+			String passengerKey = "passenger" + i;
+			String passengerDetails = bookingProperties.getProperty(passengerKey);
+
+			if (passengerDetails == null || passengerDetails.trim().isEmpty()) {
+				throw new RuntimeException("Passenger details not provided for: " + passengerKey);
+			}
+
+			String[] detailsArray = passengerDetails.trim().split("\\s*\\|\\s*");
+
+			if (detailsArray.length < 3) {
+				throw new RuntimeException(
+						"Mandatory fields (<full name> | <age> | <gender>) not provided for: " + passengerKey);
+			}
+
+			if (detailsArray[0].isEmpty()) {
+				throw new RuntimeException("Passenger name not provided for: " + passengerKey);
+			}
+
+			if (detailsArray[1].isEmpty()) {
+				throw new RuntimeException("Passenger age not provided for: " + passengerKey);
+			} else {
+				String invalidAgeMessage = "Invalid age, it should be between 1 and 125 for: " + passengerKey;
+
+				try {
+					int age = Integer.parseInt(detailsArray[1]);
+
+					if (age < 1 || age > 125) {
+						throw new RuntimeException(invalidAgeMessage);
+					}
+				} catch (NumberFormatException e) {
+					throw new RuntimeException(invalidAgeMessage);
+				}
+			}
+
+			if (detailsArray[2].isEmpty()) {
+				throw new RuntimeException("Passenger gender not provided for: " + passengerKey);
+			} else {
+				List<String> validGenders = Arrays.asList("M", "F", "T");
+
+				if (validGenders.indexOf(detailsArray[2].toUpperCase()) < 0) {
+					throw new RuntimeException("Invalid gender for: " + passengerKey);
+
+				}
+			}
+
+			if (detailsArray.length >= 4 && !detailsArray[3].isEmpty()) {
+				List<String> validBerthPreferences = Arrays.asList("LB", "MB", "UB", "SL", "SU");
+
+				if (validBerthPreferences.indexOf(detailsArray[3].toUpperCase()) < 0) {
+					throw new RuntimeException("Invalid berth preference for: " + passengerKey);
+				}
+			}
+		}
+
+		seatLinkDateSearch = journeyLocalDate.format(seatLinkDateTimeFormatter);
 	}
 
 	@SuppressWarnings("unused")
@@ -84,6 +241,14 @@ public class IRCTCBooking {
 
 		boolean closeBrowser = true;
 
+		LocalTime irctcTatkalWindowStart = LocalTime.of(9, 30).truncatedTo(ChronoUnit.MINUTES);
+		LocalTime irctcTatkalWindowEnd = LocalTime.of(11, 31).truncatedTo(ChronoUnit.MINUTES);
+		LocalTime indiaLocalTime = LocalTime.now(indiaZoneId);
+
+		if (indiaLocalTime.isAfter(irctcTatkalWindowStart) && indiaLocalTime.isBefore(irctcTatkalWindowEnd)) {
+			tatkalWindow = true;
+		}
+
 		try {
 			driver.get(irctcUrl);
 
@@ -96,8 +261,8 @@ public class IRCTCBooking {
 			 */
 			if (tatkalWindow) {
 				/*
-				 * Preventing login before threshold time for tatkal booking, i.e. 09:59 AM for AC
-				 * and 10:59 AM for non AC classes.
+				 * Preventing login before threshold time for tatkal booking, i.e. 09:59 AM for
+				 * AC and 10:59 AM for non AC classes.
 				 */
 				String journeyQuota = bookingProperties.getProperty(BookingProperty.JOURNEY_QUOTA.toString()).trim();
 
@@ -111,7 +276,7 @@ public class IRCTCBooking {
 						loginTimeThreshold = loginTimeThreshold.withHour(10);
 					}
 
-					LocalTime indiaLocalTime = LocalTime.now(indiaZoneId);
+					indiaLocalTime = LocalTime.now(indiaZoneId);
 
 					if (indiaLocalTime.isBefore(loginTimeThreshold)) {
 						throw new RuntimeException("Trying to login before: " + loginTimeThreshold);
@@ -143,7 +308,7 @@ public class IRCTCBooking {
 			datePickerInput.sendKeys(Keys.CONTROL, "a", Keys.BACK_SPACE);
 			datePickerInput.sendKeys(bookingProperties.getProperty(BookingProperty.JOURNEY_DATE.toString()).trim());
 
-			// Journey Quota dropdonw
+			// Journey Quota dropdown
 			WebElement journeyQuotaDropdown = driver.findElement(By.id("journeyQuota"));
 			actions.click(journeyQuotaDropdown).perform();
 
@@ -188,12 +353,13 @@ public class IRCTCBooking {
 						tatkalBookingStartTime = tatkalBookingStartTime.withHour(11);
 					}
 
-					LocalTime indiaLocalTime = LocalTime.now(indiaZoneId);
+					indiaLocalTime = LocalTime.now(indiaZoneId);
 					long timeDifferenceInMillis = Duration
 							.between(indiaLocalTime, tatkalBookingStartTime).toMillis();
 
 					if (timeDifferenceInMillis > 0) {
-						// Time remaining for the booking to start should be less than 1 minute (60000 milliseconds).
+						// Time remaining for the booking to start should be less than 1 minute (60000
+						// milliseconds).
 						if (timeDifferenceInMillis > 60000) {
 							throw new RuntimeException("More than one minute is remaining for the booking to start.");
 						}
@@ -335,7 +501,8 @@ public class IRCTCBooking {
 				actions.click(continueButton).perform();
 
 				/*
-				 * selecting 'No' for 'Passengers may get berth allotted in different coaches' dialog box.
+				 * selecting 'No' for 'Passengers may get berth allotted in different coaches'
+				 * dialog box.
 				 */
 				try {
 					driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(alternateImplicitWaitTime));
@@ -360,6 +527,11 @@ public class IRCTCBooking {
 				// continue button for clicking after entering final captcha
 				WebElement continueButtonOnReview = driver.findElement(By.xpath(
 						"//button[@class='btnDefault train_Search'][contains(text(), 'Continue')]"));
+
+				// process to extract and fill captcha image and click continue button
+				if (captchaTextExtractionEnabled) {
+					extractAndFillCaptchaImageText(driver, continueButtonOnReview);
+				}
 
 				WebElement irctcIPayOption = driver
 						.findElement(By.xpath("//span[contains(text(), 'IRCTC iPay')]/parent::div"));
@@ -386,8 +558,6 @@ public class IRCTCBooking {
 				wait.until(ExpectedConditions.elementToBeClickable(finalPayButton));
 				finalPayButton.click();
 			}
-		} catch (Exception e) {
-			throw e;
 		} finally {
 			if (closeBrowser) {
 				driver.quit();
@@ -406,15 +576,12 @@ public class IRCTCBooking {
 		new Actions(driver).click(passwordInput).perform();
 		passwordInput.sendKeys(bookingProperties.getProperty(BookingProperty.PASSWORD.toString()).trim());
 
-		// sign in captcha
-		WebElement signInCaptchaInput = driver.findElement(By.id("captcha"));
-		wait.until(ExpectedConditions.elementToBeClickable(signInCaptchaInput));
-		new Actions(driver).click(signInCaptchaInput).perform();
-
 		// sign in button
 		WebElement signInButton = driver.findElement(By.xpath("//button[@type='submit'][contains(text(), 'SIGN IN')]"));
-		wait.until(ExpectedConditions.elementToBeClickable(signInButton));
-		// signInButton.click();
+
+		if (captchaTextExtractionEnabled) {
+			extractAndFillCaptchaImageText(driver, signInButton);
+		}
 
 		wait.until(ExpectedConditions.invisibilityOf(signInButton));
 
@@ -434,184 +601,40 @@ public class IRCTCBooking {
 		}
 	}
 
-	private static void doPreBookingValidations() {
-		String irctcUsername = bookingProperties.getProperty(BookingProperty.USERNAME.toString());
-		String irctcPassword = bookingProperties.getProperty(BookingProperty.PASSWORD.toString());
-		String fromStationCode = bookingProperties.getProperty(BookingProperty.FROM_STATION.toString());
-		String toStationCode = bookingProperties.getProperty(BookingProperty.TO_STATION.toString());
-		String journeyDate = bookingProperties.getProperty(BookingProperty.JOURNEY_DATE.toString());
-		String journeyQuota = bookingProperties.getProperty(BookingProperty.JOURNEY_QUOTA.toString());
-		String trainNumber = bookingProperties.getProperty(BookingProperty.TRAIN_NUMBER.toString());
-		String trainClass = bookingProperties.getProperty(BookingProperty.TRAIN_CLASS.toString());
-		String passengerCount = bookingProperties.getProperty(BookingProperty.PASSENGER_COUNT.toString());
-		String upiId = bookingProperties.getProperty(BookingProperty.UPI_ID.toString());
+	public static void extractAndFillCaptchaImageText(WebDriver driver, WebElement continueButton) {
+		try {
+			ITesseract tesseract = new Tesseract();
+			File traineddataFile = new File(
+					ClassLoader.getSystemClassLoader().getResource("eng.traineddata").getPath());
+			tesseract.setDatapath(traineddataFile.getParent());
+			String captchaImageExtractedText = "";
 
-		LocalDate journeyLocalDate = null;
-		int passengerCountInt = 0;
-		final String valueNotProvidedMessage = "Value not provided for property: ";
-		final String invalidValueMessage = "Invalid value for property: ";
+			WebElement captchaImageElement = driver.findElement(By.cssSelector("img.captcha-img"));
+			WebElement captchaInputElement = driver.findElement(By.cssSelector("input#captcha"));
 
-		if (irctcUsername == null || irctcUsername.trim().isEmpty()) {
-			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.USERNAME.toString());
-		}
-
-		if (irctcPassword == null || irctcPassword.trim().isEmpty()) {
-			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.PASSWORD.toString());
-		}
-
-		if (fromStationCode == null || fromStationCode.trim().isEmpty()) {
-			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.FROM_STATION.toString());
-		}
-
-		if (toStationCode == null || toStationCode.trim().isEmpty()) {
-			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.TO_STATION.toString());
-		}
-
-		if (journeyDate == null || journeyDate.trim().isEmpty()) {
-			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.JOURNEY_DATE.toString());
-		} else {
-			journeyLocalDate = LocalDate.parse(journeyDate.trim(), journeyDateFormattter);
-			LocalDate indiaLocalDate = LocalDate.now(indiaZoneId);
-
-			if (journeyLocalDate.isBefore(indiaLocalDate)) {
-				throw new RuntimeException("Invalid journey date, it should not be in the past date.");
-			}
-		}
-
-		if (journeyQuota == null || journeyQuota.trim().isEmpty()) {
-			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.JOURNEY_QUOTA.toString());
-		} else {
-			List<String> validJourneyQuotas = Arrays.asList("TATKAL", "GENERAL");
-
-			if (validJourneyQuotas.indexOf(journeyQuota.trim().toUpperCase()) < 0) {
-				throw new RuntimeException(invalidValueMessage + BookingProperty.JOURNEY_QUOTA.toString());
+			// waiting for ad to load to prevent scroll issue
+			if (!tatkalWindow) {
+				TimeUnit.SECONDS.sleep(1);
 			}
 
-			LocalDate indiaNextDayLocalDate = LocalDate.now(indiaZoneId).plus(1, ChronoUnit.DAYS);
+			/*
+			 * scrolling captcha image element in the middle of the page
+			 * for consistently taking screenshot for image text extraction.
+			 */
+			((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView({block: 'center'})",
+					captchaImageElement);
 
-			if ("TATKAL".equalsIgnoreCase(journeyQuota.trim()) && (journeyLocalDate.isBefore(indiaNextDayLocalDate)
-					|| journeyLocalDate.isAfter(indiaNextDayLocalDate))) {
-				throw new RuntimeException(invalidValueMessage + BookingProperty.JOURNEY_DATE.toString());
-			}
-		}
+			File captchaImageFile = captchaImageElement.getScreenshotAs(OutputType.FILE);
+			System.out.println("\n" + captchaImageFile);
 
-		if (trainNumber == null || trainNumber.trim().isEmpty()) {
-			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.TRAIN_NUMBER.toString());
-		} else {
-			try {
-				Integer.parseInt(trainNumber.trim());
-			} catch (NumberFormatException e) {
-				throw new RuntimeException(invalidValueMessage + BookingProperty.TRAIN_NUMBER.toString());
-			}
-		}
+			captchaImageExtractedText = tesseract.doOCR(captchaImageFile).replaceAll("\\s*", "");
+			System.out.println("\n" + captchaImageExtractedText);
 
-		if (trainClass == null || trainClass.trim().isEmpty()) {
-			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.TRAIN_CLASS.toString());
-		} else {
-			List<String> validTrainClasses = Arrays.asList("2S", "SL", "CC", "3E", "3A", "2A", "1A");
-
-			if (validTrainClasses.indexOf(trainClass.trim().toUpperCase()) < 0) {
-				throw new RuntimeException(invalidValueMessage + BookingProperty.TRAIN_CLASS.toString());
-			}
-
-			if ("TATKAL".equalsIgnoreCase(journeyQuota.trim()) && "1A".equalsIgnoreCase(trainClass.trim())) {
-				throw new RuntimeException("'1A' train class not applicable for 'TATKAL' journey quota.");
-			}
-		}
-
-		if (passengerCount == null || passengerCount.trim().isEmpty()) {
-			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.PASSENGER_COUNT.toString());
-		} else {
-			try {
-				passengerCountInt = Integer.parseInt(passengerCount.trim());
-			} catch (NumberFormatException e) {
-				throw new RuntimeException(invalidValueMessage + BookingProperty.PASSENGER_COUNT.toString());
-			}
-
-			if (passengerCountInt < 1) {
-				throw new RuntimeException(invalidValueMessage + BookingProperty.PASSENGER_COUNT.toString());
-			}
-
-			if ("TATKAL".equalsIgnoreCase(journeyQuota.trim()) && passengerCountInt > 4) {
-				throw new RuntimeException("Maximum 4 passengers are allowed in 'TATKAL' journey quota.");
-			} else if (passengerCountInt > 6) {
-				throw new RuntimeException("Maximum 6 passengers are allowed in 'GENERAL' journey quota.");
-			}
-		}
-
-		for (int i = 1; i <= passengerCountInt; i++) {
-			String passengerKey = "passenger" + i;
-			String passengerDetails = bookingProperties.getProperty(passengerKey);
-
-			if (passengerDetails == null || passengerDetails.trim().isEmpty()) {
-				throw new RuntimeException("Passenger details not provided for: " + passengerKey);
-			}
-
-			String[] detailsArray = passengerDetails.trim().split("\\s*\\|\\s*");
-
-			if (detailsArray.length < 3) {
-				throw new RuntimeException(
-						"Mandatory fields (<full name> | <age> | <gender>) not provided for: " + passengerKey);
-			}
-
-			if (detailsArray[0].isEmpty()) {
-				throw new RuntimeException("Passenger name not provided for: " + passengerKey);
-			}
-
-			if (detailsArray[1].isEmpty()) {
-				throw new RuntimeException("Passenger age not provided for: " + passengerKey);
-			} else {
-				String invalidAgeMessage = "Invalid age, it should be between 1 and 125 for: " + passengerKey;
-
-				try {
-					int age = Integer.parseInt(detailsArray[1]);
-
-					if (age < 1 || age > 125) {
-						throw new RuntimeException(invalidAgeMessage);
-					}
-				} catch (NumberFormatException e) {
-					throw new RuntimeException(invalidAgeMessage);
-				}
-			}
-
-			if (detailsArray[2].isEmpty()) {
-				throw new RuntimeException("Passenger gender not provided for: " + passengerKey);
-			} else {
-				List<String> validGenders = Arrays.asList("M", "F", "T");
-
-				if (validGenders.indexOf(detailsArray[2].toUpperCase()) < 0) {
-					throw new RuntimeException("Invalid gender for: " + passengerKey);
-
-				}
-			}
-
-			if (detailsArray.length >= 4 && !detailsArray[3].isEmpty()) {
-				List<String> validBerthPreferences = Arrays.asList("LB", "MB", "UB", "SL", "SU");
-
-				if (validBerthPreferences.indexOf(detailsArray[3].toUpperCase()) < 0) {
-					throw new RuntimeException("Invalid berth preference for: " + passengerKey);
-				}
-			}
-		}
-
-		if (upiId == null || upiId.trim().isEmpty()) {
-			throw new RuntimeException(valueNotProvidedMessage + BookingProperty.UPI_ID.toString());
-		} else {
-			String upiIdRegex = "^(\\w+[.\\-])*\\w+@(\\w+[.\\-])*\\w+$";
-
-			if (!upiId.trim().matches(upiIdRegex)) {
-				throw new RuntimeException(invalidValueMessage + BookingProperty.UPI_ID.toString());
-			}
-		}
-
-		IRCTCBooking.seatLinkDateSearch = journeyLocalDate.format(seatLinkDateTimeFormatter);
-
-		LocalTime irctcTatkalWindowStart = LocalTime.of(9, 30).truncatedTo(ChronoUnit.MINUTES);
-		LocalTime irctcTatkalWindowEnd = LocalTime.of(11, 31).truncatedTo(ChronoUnit.MINUTES);
-		LocalTime indiaLocalTime = LocalTime.now(indiaZoneId);
-
-		if (indiaLocalTime.isAfter(irctcTatkalWindowStart) && indiaLocalTime.isBefore(irctcTatkalWindowEnd)) {
-			IRCTCBooking.tatkalWindow = true;
+			// filling captcha image text in the input field
+			captchaInputElement.sendKeys(captchaImageExtractedText);
+			new Actions(driver).click(continueButton).perform();
+		} catch (Exception e) {
+			// e.printStackTrace();
 		}
 	}
 
