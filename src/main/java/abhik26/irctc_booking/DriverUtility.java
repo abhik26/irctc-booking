@@ -4,7 +4,7 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.edge.EdgeDriver;
-import org.openqa.selenium.firefox.FirefoxDriver;
+import org.openqa.selenium.edge.EdgeOptions;
 
 public interface DriverUtility {
 
@@ -14,38 +14,28 @@ public interface DriverUtility {
 		if (browserName == null) {
 			throw new NullPointerException("browser name is not provided");
 		}
+
+		final String PATH_PREFIX = "localdata/";
 		
-		try {
-			switch (browserName) {
-				case CHROME:
-					System.setProperty("webdriver.chrome.driver",
-							ClassLoader.getSystemResource("localdata/chromedriver.exe").getPath());
-					ChromeOptions options = new ChromeOptions();
-					options.addArguments("--remote-allow-origins=*");
-					options.addArguments("--start-maximized");
-					options.addArguments("--disable-notifications");
-					// options.addArguments("--user-data-dir=C:\\Users\\" + System.getProperty("user.name")
-					// 		+ "\\AppData\\Local\\Google\\Chrome\\User Data");
-					driver = new ChromeDriver(options);
-					break;
-				case EDGE:
-					System.setProperty("webdriver.edge.driver",
-							ClassLoader.getSystemResource("localdata/msedgedriver.exe").getPath());
-					driver = new EdgeDriver();
-					break;
-				case FIREFOX:
-					System.setProperty("webdriver.gecko.driver",
-							ClassLoader.getSystemResource("localdata/geckodriver.exe").getPath());
-	                driver = new FirefoxDriver();
-					break;
-				default:
-					System.setProperty("webdriver.chrome.driver",
-							ClassLoader.getSystemResource("localdata/chromedriver.exe").getPath());
-					driver = new ChromeDriver();
-					break;
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
+		switch (browserName) {
+			case CHROME:
+				System.setProperty("webdriver.chrome.driver",
+						ClassLoader.getSystemResource(PATH_PREFIX + "chromedriver.exe").getPath());
+				ChromeOptions chromeOptions = new ChromeOptions();
+				chromeOptions.addArguments("--start-maximized");
+				chromeOptions.addArguments("--disable-notifications");
+				// options.addArguments("--user-data-dir=C:\\Users\\" + System.getProperty("user.name")
+				// 		+ "\\AppData\\Local\\Google\\Chrome\\User Data");
+				driver = new ChromeDriver(chromeOptions);
+				break;
+			case EDGE:
+				System.setProperty("webdriver.edge.driver",
+						ClassLoader.getSystemResource(PATH_PREFIX + "msedgedriver.exe").getPath());
+				EdgeOptions edgeOptions = new EdgeOptions();
+				edgeOptions.addArguments("--start-maximized");
+				edgeOptions.addArguments("--disable-notifications");
+				driver = new EdgeDriver(edgeOptions);
+				break;
 		}
 		
 		return driver;

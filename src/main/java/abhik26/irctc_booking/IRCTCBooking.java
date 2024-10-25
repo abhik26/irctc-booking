@@ -47,11 +47,18 @@ public class IRCTCBooking {
 	private static String seatLinkDateSearch = null;
 	private static boolean captchaTextExtractionEnabled;
 
+	private static final List<String> VALID_TRAIN_QUOTAS = Arrays.asList("TATKAL", "GENERAL");
+	private static final List<String> VALID_TRAIN_CLASSES = Arrays.asList("2S", "SL", "CC", "3E", "3A", "2A", "1A");
+	private static final List<String> VALID_GENDERS = Arrays.asList("M", "F", "T");
+	private static final List<String> VALID_BERTH_PREFERENCES = Arrays.asList("LB", "MB", "UB", "SL", "SU");
+	private static final List<String> VALID_FOOD_PREFERENCES = Arrays.asList("V", "N", "J", "F", "G", "D");
+
 	private static enum BookingProperty {
 		USERNAME("irctc_username"), PASSWORD("irctc_password"), FROM_STATION("from_station_code"),
 		TO_STATION("to_station_code"), JOURNEY_DATE("journey_date"), JOURNEY_QUOTA("journey_quota"),
 		TRAIN_NUMBER("train_number"), TRAIN_CLASS("train_class"), PASSENGER_COUNT("passenger_count"),
-		UPI_ID("upi_id"), CAPTCHA_TEXT_EXTRACTION_ENABLED("captcha_text_extraction_enabled");
+		UPI_ID("upi_id"), CAPTCHA_TEXT_EXTRACTION_ENABLED("captcha_text_extraction_enabled"),
+		PASSENGER_FOOD_PREFERENCE("passenger_food_preference");
 
 		private final String name;
 
@@ -109,9 +116,7 @@ public class IRCTCBooking {
 							+ ". It should not be in the past date.");
 				}
 			} else if (BookingProperty.JOURNEY_QUOTA.equals(bookingProperty)) {
-				List<String> validJourneyQuotas = Arrays.asList("TATKAL", "GENERAL");
-
-				if (validJourneyQuotas.indexOf(propertyValue.trim().toUpperCase()) < 0) {
+				if (VALID_TRAIN_QUOTAS.indexOf(propertyValue.trim().toUpperCase()) < 0) {
 					throw new RuntimeException(invalidValueMessage + bookingProperty);
 				}
 
@@ -130,9 +135,7 @@ public class IRCTCBooking {
 					throw new RuntimeException(invalidValueMessage + bookingProperty);
 				}
 			} else if (BookingProperty.TRAIN_CLASS.equals(bookingProperty)) {
-				List<String> validTrainClasses = Arrays.asList("2S", "SL", "CC", "3E", "3A", "2A", "1A");
-
-				if (validTrainClasses.indexOf(propertyValue.trim().toUpperCase()) < 0) {
+				if (VALID_TRAIN_CLASSES.indexOf(propertyValue.trim().toUpperCase()) < 0) {
 					throw new RuntimeException(invalidValueMessage + bookingProperty);
 				}
 
@@ -169,6 +172,10 @@ public class IRCTCBooking {
 				}
 
 				captchaTextExtractionEnabled = Boolean.parseBoolean(propertyValue.trim());
+			} else if (BookingProperty.PASSENGER_FOOD_PREFERENCE.equals(bookingProperty)) {
+				if (VALID_FOOD_PREFERENCES.indexOf(propertyValue.trim().toUpperCase()) < 0) {
+					throw new RuntimeException(invalidValueMessage + bookingProperty);
+				}
 			}
 		}
 
@@ -210,18 +217,14 @@ public class IRCTCBooking {
 			if (detailsArray[2].isEmpty()) {
 				throw new RuntimeException("Passenger gender not provided for: " + passengerKey);
 			} else {
-				List<String> validGenders = Arrays.asList("M", "F", "T");
-
-				if (validGenders.indexOf(detailsArray[2].toUpperCase()) < 0) {
+				if (VALID_GENDERS.indexOf(detailsArray[2].toUpperCase()) < 0) {
 					throw new RuntimeException("Invalid gender for: " + passengerKey);
 
 				}
 			}
 
 			if (detailsArray.length >= 4 && !detailsArray[3].isEmpty()) {
-				List<String> validBerthPreferences = Arrays.asList("LB", "MB", "UB", "SL", "SU");
-
-				if (validBerthPreferences.indexOf(detailsArray[3].toUpperCase()) < 0) {
+				if (VALID_BERTH_PREFERENCES.indexOf(detailsArray[3].toUpperCase()) < 0) {
 					throw new RuntimeException("Invalid berth preference for: " + passengerKey);
 				}
 			}
@@ -230,7 +233,6 @@ public class IRCTCBooking {
 		seatLinkDateSearch = journeyLocalDate.format(seatLinkDateTimeFormatter);
 	}
 
-	@SuppressWarnings("unused")
 	private static void startBooking() throws Exception {
 		final WebDriver driver = DriverUtility.getDriver(BrowserName.CHROME);
 		final WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(defaultExplicitWaitTime));
@@ -473,6 +475,20 @@ public class IRCTCBooking {
 								.click();
 					}
 
+					// select passenger food preference
+					if (appPassenger.findElements(By.cssSelector("select[formcontrolname='passengerFoodChoice']"))
+							.size() > 0) {
+						String passengerFoodPreference = bookingProperties
+								.getProperty(BookingProperty.PASSENGER_FOOD_PREFERENCE.toString()).trim().toUpperCase();
+						WebElement foodPreferenceDropdown = appPassenger
+								.findElements(By.cssSelector("select[formcontrolname='passengerFoodChoice']")).get(0);
+						foodPreferenceDropdown.click();
+						foodPreferenceDropdown
+								.findElement(By.cssSelector(
+										String.format("option[value='%s']", passengerFoodPreference)))
+								.click();
+					}
+
 					// click add passenger link
 					if (i < passengerCount) {
 						WebElement addPassengerLink = driver
@@ -522,7 +538,7 @@ public class IRCTCBooking {
 				closeBrowser = false;
 
 				// final captcha
-				WebElement finalCaptcha = driver.findElement(By.id("captcha"));
+				WebElement captchaInputElement = driver.findElement(By.cssSelector("input#captcha"));
 
 				// continue button for clicking after entering final captcha
 				WebElement continueButtonOnReview = driver.findElement(By.xpath(
@@ -531,6 +547,18 @@ public class IRCTCBooking {
 				// process to extract and fill captcha image and click continue button
 				if (captchaTextExtractionEnabled) {
 					extractAndFillCaptchaImageText(driver, continueButtonOnReview);
+				} else {
+					// waiting for ad to load to prevent scroll issue
+					if (!tatkalWindow) {
+						TimeUnit.SECONDS.sleep(1);
+					}
+
+					/*
+					 * scrolling captcha input element in the middle of the page.
+					 */
+					((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView({block: 'center'})",
+							captchaInputElement);
+					captchaInputElement.click();
 				}
 
 				WebElement irctcIPayOption = driver
@@ -581,6 +609,9 @@ public class IRCTCBooking {
 
 		if (captchaTextExtractionEnabled) {
 			extractAndFillCaptchaImageText(driver, signInButton);
+		} else {
+			WebElement captchaInputElement = driver.findElement(By.cssSelector("input#captcha"));
+			captchaInputElement.sendKeys("");
 		}
 
 		wait.until(ExpectedConditions.invisibilityOf(signInButton));
