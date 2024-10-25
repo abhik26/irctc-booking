@@ -476,8 +476,8 @@ public class IRCTCBooking {
 					}
 
 					// select passenger food preference
-					if (appPassenger.findElements(By.cssSelector("select[formcontrolname='passengerFoodChoice']"))
-							.size() > 0) {
+					try {
+						driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(0));
 						String passengerFoodPreference = bookingProperties
 								.getProperty(BookingProperty.PASSENGER_FOOD_PREFERENCE.toString()).trim().toUpperCase();
 						WebElement foodPreferenceDropdown = appPassenger
@@ -487,6 +487,10 @@ public class IRCTCBooking {
 								.findElement(By.cssSelector(
 										String.format("option[value='%s']", passengerFoodPreference)))
 								.click();
+					} catch (Exception e) {
+						// e.printStackTrace();
+					} finally {
+						driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(defaultImplicitWaitTime));
 					}
 
 					// click add passenger link
