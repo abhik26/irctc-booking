@@ -42,7 +42,7 @@ public class IRCTCBooking {
 	private static final int defaultExplicitWaitTime = 60;
 	private static final int alternateImplicitWaitTime = 1;
 
-	private static Properties bookingProperties = null;
+	private static Properties bookingProperties = new Properties();
 	private static boolean tatkalWindow = false;
 	private static String seatLinkDateSearch = null;
 	private static boolean captchaTextExtractionEnabled;
@@ -52,6 +52,7 @@ public class IRCTCBooking {
 	private static final List<String> VALID_GENDERS = Arrays.asList("M", "F", "T");
 	private static final List<String> VALID_BERTH_PREFERENCES = Arrays.asList("LB", "MB", "UB", "SL", "SU");
 	private static final List<String> VALID_FOOD_PREFERENCES = Arrays.asList("V", "N", "J", "F", "G", "D");
+	private static final String validUpiIdRegex = "^(\\w+[.\\-])*\\w+@(\\w+[.\\-])*\\w+$";
 
 	private static enum BookingProperty {
 		USERNAME("irctc_username"), PASSWORD("irctc_password"), FROM_STATION("from_station_code"),
@@ -80,7 +81,6 @@ public class IRCTCBooking {
 
 	private static void loadBookingProperties() throws Exception {
 		try (InputStream is = ClassLoader.getSystemClassLoader().getResourceAsStream("booking.properties")) {
-			bookingProperties = new Properties();
 			bookingProperties.load(is);
 		} catch (Exception e) {
 			throw e;
@@ -159,9 +159,7 @@ public class IRCTCBooking {
 					throw new RuntimeException("Maximum 6 passengers are allowed in 'GENERAL' journey quota.");
 				}
 			} else if (BookingProperty.UPI_ID.equals(bookingProperty)) {
-				String upiIdRegex = "^(\\w+[.\\-])*\\w+@(\\w+[.\\-])*\\w+$";
-
-				if (!propertyValue.trim().matches(upiIdRegex)) {
+				if (!propertyValue.trim().matches(validUpiIdRegex)) {
 					throw new RuntimeException(invalidValueMessage + bookingProperty);
 				}
 			} else if (BookingProperty.CAPTCHA_TEXT_EXTRACTION_ENABLED.equals(bookingProperty)) {
@@ -590,6 +588,13 @@ public class IRCTCBooking {
 				wait.until(ExpectedConditions.elementToBeClickable(finalPayButton));
 				finalPayButton.click();
 			}
+		} catch (Exception e) {
+			if (!closeBrowser) {
+				jsExecutor.executeScript("window.alert('Exception occurred...')");
+				TimeUnit.SECONDS.sleep(1);
+				driver.switchTo().alert().accept();
+			}
+			e.printStackTrace();
 		} finally {
 			if (closeBrowser) {
 				driver.quit();
