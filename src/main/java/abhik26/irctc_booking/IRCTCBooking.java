@@ -50,9 +50,9 @@ public class IRCTCBooking {
 	private static final List<String> VALID_TRAIN_QUOTAS = Arrays.asList("TATKAL", "GENERAL");
 	private static final List<String> VALID_TRAIN_CLASSES = Arrays.asList("2S", "SL", "CC", "3E", "3A", "2A", "1A");
 	private static final List<String> VALID_GENDERS = Arrays.asList("M", "F", "T");
-	private static final List<String> VALID_BERTH_PREFERENCES = Arrays.asList("LB", "MB", "UB", "SL", "SU");
+	private static final List<String> VALID_BERTH_PREFERENCES = Arrays.asList("LB", "MB", "UB", "SL", "SU", "WS");
 	private static final List<String> VALID_FOOD_PREFERENCES = Arrays.asList("V", "N", "J", "F", "G", "D");
-	private static final String validUpiIdRegex = "^(\\w+[.\\-])*\\w+@(\\w+[.\\-])*\\w+$";
+	private static final String VALID_UPI_ID_REGEX = "^(\\w+[.\\-])*\\w+@(\\w+[.\\-])*\\w+$";
 
 	private static enum BookingProperty {
 		USERNAME("irctc_username"), PASSWORD("irctc_password"), FROM_STATION("from_station_code"),
@@ -159,7 +159,7 @@ public class IRCTCBooking {
 					throw new RuntimeException("Maximum 6 passengers are allowed in 'GENERAL' journey quota.");
 				}
 			} else if (BookingProperty.UPI_ID.equals(bookingProperty)) {
-				if (!propertyValue.trim().matches(validUpiIdRegex)) {
+				if (!propertyValue.trim().matches(VALID_UPI_ID_REGEX)) {
 					throw new RuntimeException(invalidValueMessage + bookingProperty);
 				}
 			} else if (BookingProperty.CAPTCHA_TEXT_EXTRACTION_ENABLED.equals(bookingProperty)) {
@@ -433,7 +433,7 @@ public class IRCTCBooking {
 					actions.moveToElement(appPassenger).perform();
 
 					WebElement passengerNameInput = appPassenger
-							.findElement(By.cssSelector("input[placeholder='Passenger Name']"));
+							.findElement(By.cssSelector("input[placeholder='Name']"));
 
 					// limiting to maximum characters allowed in the passenger name field
 					String passengerNameMaxLength = passengerNameInput.getDomAttribute("maxLength");
