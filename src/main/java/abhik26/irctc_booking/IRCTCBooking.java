@@ -252,9 +252,7 @@ public class IRCTCBooking {
 		try {
 			driver.get(irctcUrl);
 
-			// train search button
-			WebElement trainSearchButton = driver.findElement(By.cssSelector(
-					"button[type='submit'][class='search_btn train_Search'"));
+			signIn(driver, wait);
 
 			/*
 			 * To be used during tatkal window i.e. between 09:30 AM to 11:30 AM.
@@ -282,10 +280,6 @@ public class IRCTCBooking {
 						throw new RuntimeException("Trying to login before: " + loginTimeThreshold);
 					}
 				}
-
-				// click train search button
-				trainSearchButton.click();
-				signIn(driver, wait);
 			}
 
 			// From station
@@ -321,6 +315,8 @@ public class IRCTCBooking {
 			actions.click(journeyQuotaOption).perform();
 
 			// click train search button
+			WebElement trainSearchButton = driver.findElement(By.cssSelector(
+				"button[type='submit'][class='search_btn train_Search'"));
 			trainSearchButton.click();
 
 			WebElement train = driver.findElement(By.xpath(String.format(
@@ -409,13 +405,6 @@ public class IRCTCBooking {
 				// e.printStackTrace();
 			} finally {
 				driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(defaultImplicitWaitTime));
-			}
-
-			/*
-			 * To be used outside the tatkal time window.
-			 */
-			if (!tatkalWindow) {
-				signIn(driver, wait);
 			}
 
 			int passengerCount = Integer
@@ -602,7 +591,14 @@ public class IRCTCBooking {
 		}
 	}
 
-	private static void signIn(WebDriver driver, WebDriverWait wait) {
+	private static void signIn(WebDriver driver, WebDriverWait wait) throws Exception {
+		//click login
+		WebElement login = driver.findElement(By.cssSelector("a.loginText"));
+		
+		if (login.getText().trim().equalsIgnoreCase("LOGIN")) {
+			login.click();
+		}
+
 		// username input
 		WebElement userIdInput = driver.findElement(By.cssSelector("input[formcontrolname='userid']"));
 		userIdInput.sendKeys(bookingProperties.getProperty(BookingProperty.USERNAME.toString()).trim());
